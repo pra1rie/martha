@@ -281,7 +281,7 @@ init(void)
 	initNara();
 	wn = windowNew("Martha", 800, 600, true);
 	SDL_Color color = {0xFA, 0xFA, 0xFA, 0xFF};
-	editor.font = fontNew("bin/JuliaMono.ttf", 24, color);
+	editor.font = fontNew("JuliaMono.ttf", 24, color);
 	
 	editor_new_layer(0, create_image(64, 64, 0xFFFFFFFF));
 	editor_new_layer(1, create_image(64, 64, 0x00000000));

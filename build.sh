@@ -2,12 +2,12 @@
 
 # set -xe
 
-NAME='bin/martha'
+NAME='martha'
 LIBS='-lSDL2main -lSDL2 -lSDL2_image -lSDL2_ttf'
 
-rm -f $NAME
-gcc nara/*.c sauce/*.c -I nara $LIBS -o $NAME
+rm -f bin/$NAME
+gcc nara/*.c sauce/*.c -I nara $LIBS -o bin/$NAME
 rm -rf *.o
 
-[ -f $NAME ] && ./$NAME
+[ -f bin/$NAME ]; { cd bin; ./$NAME; }
 
