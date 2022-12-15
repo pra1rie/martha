@@ -1,163 +1,49 @@
 #include "nara.h"
+#include "image.h"
+#include "cursor.h"
+#include "editor.h"
+#include "config.h"
+
 #include <stdlib.h>
 #include <inttypes.h>
 
-#define wn global.window
-#define rn global.window.render
-
-#define UNWRAP(color) (color>>(8*3))&0xFF, \
-							 (color>>(8*2))&0xFF, \
-				      	 (color>>(8*1))&0xFF, \
-				      	 (color>>(8*0))&0xFF
-
-#define MAX_LAYERS 10
-#define SCROLL_SPEED 24
-
-typedef Uint32 Pixel;
 
 static struct {
 	bool alt, shift, ctrl, super;
 	bool left_click, right_click, middle_click;
 } keys;
 
-static struct {
-	Uint32 x, y, w, h;
-	int offset_x, offset_y;
-	int zoom, scroll_speed;
-} cursor;
-
-typedef struct image {
-	Uint32 width, height;
-	Pixel *pixels;
-} Image;
-
-static struct {
-	Image *layers[MAX_LAYERS];
-	size_t num_layers;
-	size_t current_layer;
-	Pixel color;
-	Font font;
-} editor;
-
-static Image *create_image(Uint32 width, Uint32 height, Pixel color);
-static void fill_image(Image *image, Pixel color);
-static void free_image(Image *image);
-static void draw_image(Image *image, int x, int y);
-
-static int editor_new_layer(size_t layer, Image *image);
-static int editor_remove_layer(size_t layer);
-
+static void handle_draw_pixel(int x, int y);
 static void events(SDL_Event ev);
 static void update(void);
 static void init(void);
 static void quit(void);
 
-
-static int
-editor_new_layer(size_t layer, Image *image)
-{
-	if (editor.num_layers >= MAX_LAYERS || layer >= MAX_LAYERS)
-		return 1;
-
-	++editor.num_layers;
-
-	for (size_t i = editor.num_layers; i > layer; --i) {
-		editor.layers[i] = editor.layers[i-1];
-	}
-
-	editor.layers[layer] = image;
-	editor.current_layer = layer;
-
-	return 0;
-}
-
-static int
-editor_remove_layer(size_t layer)
-{
-	if (editor.num_layers == 0 || layer >= MAX_LAYERS)
-		return 1;
-	
-	free_image(editor.layers[layer]);
-	--editor.num_layers;
-
-	for (size_t i = layer; i < editor.num_layers; ++i) {
-		editor.layers[i] = editor.layers[i+1];
-	}
-
-	editor.current_layer = layer;
-	
-	return 0;
-}
-
-
-static Image*
-create_image(Uint32 width, Uint32 height, Pixel color)
-{
-	Image *image = calloc(sizeof(Image), 1);
-	image->width = width;
-	image->height = height;
-	image->pixels = calloc(sizeof(Pixel), width * height);
-	fill_image(image, color);
-	return image;
-}
+// TODO: add tools like lines, circles, rectangles, bucket...
+//			also draw with different sizes (cursor.w, cursor.h)
 
 static void
-fill_image(Image *image, Pixel color)
+handle_draw_pixel(int x, int y)
 {
-	for (size_t i = 0; i < (image->width * image->height); ++i) {
-		image->pixels[i] = color;
+	Image *layer = editor.layers[editor.current_layer];
+	int index = y * layer->width + x;
+
+	if (x < 0 || x >= layer->width || y < 0 || y >= layer->width)
+		return;
+
+	// pencil
+	if (keys.left_click) {
+		layer->pixels[index] = editor.color;
+	}
+	// eraser
+	else if (keys.right_click) {
+		layer->pixels[index] = 0x00000000;
+	}
+	// colour picker
+	else if (keys.middle_click && layer->pixels[index] != 0x00000000) {
+		editor.color = layer->pixels[index];
 	}
 }
-
-static void
-free_image(Image *image)
-{
-	free(image->pixels);
-	free(image);
-}
-
-static void
-draw_image(Image *image, int x, int y)
-{
-	SDL_Rect rect;
-	SDL_Surface *surface;
-	SDL_Texture *texture;
-	size_t image_size;
-
-	/* image_size = image->width * image->height; */
-	surface = SDL_CreateRGBSurface(
-			0, image->width, image->height, 32,
-			0xFF000000, 0x00FF0000, 0x0000FF00, 0x000000FF);
-
-	SDL_LockSurface(surface);
-
-	memcpy(surface->pixels, image->pixels, surface->h * surface->pitch);
-	/* for (size_t i = 0; i < image_size; ++i) { */
-	/* 	rect = (SDL_Rect) { */
-	/* 		.x = i / image_size, */
-	/* 		.y = i % image_size, */
-	/* 		.w = 1, */
-	/* 		.h = 1 */
-	/* 	}; */
-
-	/* 	SDL_FillRect(surface, &rect, */
-	/* 			SDL_MapRGBA(surface->format, UNWRAP(image->pixels[i]))); */
-	/* } */
-	
-	SDL_UnlockSurface(surface);
-	texture = SDL_CreateTextureFromSurface(rn, surface);
-
-	rect = (SDL_Rect) {
-		x, y,
-		image->width * cursor.zoom,
-		image->height * cursor.zoom,
-	};
-	SDL_RenderCopy(rn, texture, NULL, &rect);
-
-	SDL_DestroyTexture(texture);
-	SDL_FreeSurface(surface);
-}
-
 
 #define GET_SPECIAL_KEYS(b) { \
 		SDL_Keycode scumcode = ev.key.keysym.sym; \
@@ -214,8 +100,8 @@ events(SDL_Event ev)
 		break;
 	case SDL_WINDOWEVENT:
 		if (ev.window.event == SDL_WINDOWEVENT_RESIZED) {
-			wn.width  = ev.window.data1;
-			wn.height = ev.window.data2;
+			WIN.width  = ev.window.data1;
+			WIN.height = ev.window.data2;
 		}
 		break;
 	default: break;
@@ -230,7 +116,7 @@ update(void)
 	// update
 	
 	/* cursor.scroll_speed = cursor.zoom * SCROLL_SPEED; */
-	/* cursor.scroll_speed = wn.width / editor.layers[editor.current_layer]->width * 2; */
+	/* cursor.scroll_speed = WIN.width / editor.layers[editor.current_layer]->width * 2; */
 
 	SDL_GetMouseState(&cursor.x, &cursor.y);
 
@@ -238,30 +124,19 @@ update(void)
 	pos_y = (cursor.y - cursor.offset_y) / cursor.zoom;
 
 	sprintf(text, "pos: %d %d", pos_x, pos_y);
-
-	if (pos_x >= 0 && pos_y >= 0) {
-		Image *layer = editor.layers[editor.current_layer];
-		int index = pos_y * layer->width + pos_x;
-
-		if (keys.left_click) {
-			layer->pixels[index] = editor.color;
-		}
-		else if (keys.right_click) {
-			layer->pixels[index] = 0x00000000;
-		}
-	}
+	handle_draw_pixel(pos_x, pos_y);
 
 	// render
-	SDL_SetRenderDrawColor(rn, UNWRAP(0x242430FF));
-	SDL_RenderClear(rn);
+	SDL_SetRenderDrawColor(REN, UNWRAP(0x242430FF));
+	SDL_RenderClear(REN);
 
 	for (size_t i = 0; i < editor.num_layers; ++i)
 		draw_image(editor.layers[i], cursor.offset_x, cursor.offset_y);
 
-	SDL_SetRenderDrawColor(rn, UNWRAP(0x242430FF));
-	fontWriteRight(&editor.font, text, wn.width, wn.height - editor.font.size);
+	SDL_SetRenderDrawColor(REN, UNWRAP(0x242430FF));
+	fontWriteRight(&editor.font, text, WIN.width, WIN.height - editor.font.size);
 	
-	SDL_RenderPresent(rn);
+	SDL_RenderPresent(REN);
 }
 
 static void
@@ -271,7 +146,7 @@ quit(void)
 		free_image(editor.layers[i]);
 
 	fontFree(&editor.font);
-	windowFree(&wn);
+	windowFree(&WIN);
 	exitNara();
 }
 
@@ -279,20 +154,9 @@ static void
 init(void)
 {
 	initNara();
-	wn = windowNew("Martha", 800, 600, true);
-	SDL_Color color = {0xFA, 0xFA, 0xFA, 0xFF};
-	editor.font = fontNew("JuliaMono.ttf", 24, color);
-	
-	editor_new_layer(0, create_image(64, 64, 0xFFFFFFFF));
-	editor_new_layer(1, create_image(64, 64, 0x00000000));
-	editor.current_layer = 1;
-	editor.color = 0x000000FF;
-	
-	cursor.x = cursor.y = 0;
-	cursor.scroll_speed = SCROLL_SPEED;
-	cursor.zoom = 8;
-	cursor.offset_x = (wn.width - (editor.layers[0]->width * cursor.zoom)) / 2;
-	cursor.offset_y = (wn.height - (editor.layers[0]->height * cursor.zoom)) / 2;
+	WIN = windowNew("Martha", 800, 600, true);
+	editor_init();
+	cursor_init();
 }
 
 int
