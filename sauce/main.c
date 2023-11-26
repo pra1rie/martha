@@ -100,8 +100,8 @@ events(SDL_Event ev)
 		break;
 	case SDL_WINDOWEVENT:
 		if (ev.window.event == SDL_WINDOWEVENT_RESIZED) {
-			WIN.width  = ev.window.data1;
-			WIN.height = ev.window.data2;
+			global.width  = ev.window.data1;
+			global.height = ev.window.data2;
 		}
 		break;
 	default: break;
@@ -116,7 +116,7 @@ update(void)
 	// update
 	
 	/* cursor.scroll_speed = cursor.zoom * SCROLL_SPEED; */
-	/* cursor.scroll_speed = WIN.width / editor.layers[editor.current_layer]->width * 2; */
+	/* cursor.scroll_speed = global.width / editor.layers[editor.current_layer]->width * 2; */
 
 	SDL_GetMouseState(&cursor.x, &cursor.y);
 
@@ -127,16 +127,16 @@ update(void)
 	handle_draw_pixel(pos_x, pos_y);
 
 	// render
-	SDL_SetRenderDrawColor(REN, UNWRAP(0x242430FF));
-	SDL_RenderClear(REN);
+	SDL_SetRenderDrawColor(global.render, UNWRAP(0x242430FF));
+	SDL_RenderClear(global.render);
 
 	for (size_t i = 0; i < editor.num_layers; ++i)
 		draw_image(editor.layers[i], cursor.offset_x, cursor.offset_y);
 
-	SDL_SetRenderDrawColor(REN, UNWRAP(0x242430FF));
-	fontWriteRight(&editor.font, text, WIN.width, WIN.height - editor.font.size);
+	SDL_SetRenderDrawColor(global.render, UNWRAP(0x242430FF));
+	fontWriteRight(&editor.font, text, global.width, global.height - editor.font.size);
 	
-	SDL_RenderPresent(REN);
+	SDL_RenderPresent(global.render);
 }
 
 static void
@@ -146,15 +146,13 @@ quit(void)
 		free_image(editor.layers[i]);
 
 	fontFree(&editor.font);
-	windowFree(&WIN);
 	exitNara();
 }
 
 static void
 init(void)
 {
-	initNara();
-	WIN = windowNew("Martha", 800, 600, true);
+	initNara("Martha", 800, 600, true);
 	editor_init();
 	cursor_init();
 }

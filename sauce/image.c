@@ -47,7 +47,7 @@ draw_image(Image *image, int x, int y)
 	SDL_LockSurface(surface);
 	memcpy(surface->pixels, image->pixels, surface->h * surface->pitch);
 	SDL_UnlockSurface(surface);
-	texture = SDL_CreateTextureFromSurface(REN, surface);
+	texture = SDL_CreateTextureFromSurface(global.render, surface);
 
 	rect = (SDL_Rect) {
 		x, y,
@@ -55,7 +55,7 @@ draw_image(Image *image, int x, int y)
 		image->height * cursor.zoom,
 	};
 	
-	SDL_RenderCopy(REN, texture, NULL, &rect);
+	SDL_RenderCopy(global.render, texture, NULL, &rect);
 	SDL_DestroyTexture(texture);
 	SDL_FreeSurface(surface);
 }
